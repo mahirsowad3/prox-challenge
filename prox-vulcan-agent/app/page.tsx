@@ -19,7 +19,7 @@ export default function Home() {
   ]);
   const [input, setInput] = useState("");
 
-  const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const trimmed = input.trim();
@@ -31,15 +31,39 @@ export default function Home() {
       content: trimmed,
     };
 
-    const assistantMessage: Message = {
-      id: Date.now() + 1,
-      role: "assistant",
-      content:
-        "This is a placeholder response for now. Later, this will call API route and return manual-grounded answers with visuals.",
-    };
-
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      const assistantMessage: Message = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: data.answer ?? "No response received.",
+      }
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error(error);
+
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: "Sorry, something went wrong.",
+      }
+      setMessages((prev) => [...prev, errorMessage]);
+    }
   };
 
   return (
