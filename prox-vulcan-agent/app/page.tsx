@@ -1,11 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import PdfPageView from "@/components/PdfPageView";
+
+type Citation = {
+  source: string;
+  page: number;
+};
+
+type Visual = {
+  source: string;
+  page: number;
+  label: string;
+};
 
 type Message = {
   id: number;
   role: "user" | "assistant";
   content: string;
+  citations?: Citation[];
+  visual?: Visual | null;
 };
 
 export default function Home() {
@@ -18,6 +32,12 @@ export default function Home() {
     },
   ]);
   const [input, setInput] = useState("");
+
+  const latestAssistantMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const latestVisual = latestAssistantMessage?.visual ?? null;
+  const latestCitations = latestAssistantMessage?.citations ?? [];
 
   const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -51,7 +71,9 @@ export default function Home() {
         id: Date.now() + 1,
         role: "assistant",
         content: data.answer ?? "No response received.",
-      }
+        citations: data.citations ?? [],
+        visual: data.visual ?? null,
+      };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
@@ -61,7 +83,9 @@ export default function Home() {
         id: Date.now() + 1,
         role: "assistant",
         content: "Sorry, something went wrong.",
-      }
+        citations: [],
+        visual: null,
+      };
       setMessages((prev) => [...prev, errorMessage]);
     }
   };
@@ -134,12 +158,23 @@ export default function Home() {
             </div>
 
             <div className="flex flex-1 flex-col gap-4 p-4">
-              <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-4">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
                 <h3 className="mb-2 text-sm font-medium">Manual Figure</h3>
-                <p className="text-sm text-zinc-400">
-                  Relevant manual images, diagrams, or page screenshots will
-                  appear here.
-                </p>
+                {latestVisual ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-zinc-400">{latestVisual.label}</p>
+                    <PdfPageView
+                      key={`${latestAssistantMessage?.id ?? "preview"}-${latestVisual.source}-${latestVisual.page}`}
+                      source={latestVisual.source}
+                      page={latestVisual.page}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-400">
+                    Relevant manual images, diagrams, or page screenshots will
+                    appear here when a response cites a manual page.
+                  </p>
+                )}
               </div>
 
               <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-4">
@@ -150,11 +185,24 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-4">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
                 <h3 className="mb-2 text-sm font-medium">Sources</h3>
-                <p className="text-sm text-zinc-400">
-                  Manual citations and relevant pages will be listed here.
-                </p>
+                {latestCitations.length > 0 ? (
+                  <div className="space-y-2">
+                    {latestCitations.map((citation, index) => (
+                      <div
+                        key={`${citation.source}-${citation.page}-${index}`}
+                        className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300"
+                      >
+                        {citation.source} · page {citation.page}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-400">
+                    Manual citations and relevant pages will be listed here.
+                  </p>
+                )}
               </div>
             </div>
           </aside>

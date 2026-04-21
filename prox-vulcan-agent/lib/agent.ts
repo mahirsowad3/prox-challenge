@@ -1,9 +1,20 @@
 import { retrieveManualContext } from "@/lib/retrieval";
 
+export type Citation = {
+  source: string;
+  page: number;
+};
+
+export type Visual = {
+  source: string;
+  page: number;
+  label: string;
+};
+
 export type AgentResponse = {
   answer: string;
-  citations: { source: string; page: number }[];
-  visual: null;
+  citations: Citation[];
+  visual: Visual | null;
 };
 
 export async function runAgent(message: string): Promise<AgentResponse> {
@@ -18,6 +29,13 @@ export async function runAgent(message: string): Promise<AgentResponse> {
     };
   }
 
+  const citations: Citation[] = chunks.map((chunk) => ({
+    source: chunk.source,
+    page: chunk.page,
+  }));
+
+  const topCitation = citations[0];
+
   const contextText = chunks
     .map(
       (chunk) =>
@@ -28,10 +46,12 @@ export async function runAgent(message: string): Promise<AgentResponse> {
   return {
     answer:
       `Here is the retrieved context for your question:\n\n${contextText}`,
-    citations: chunks.map((chunk) => ({
-      source: chunk.source,
-      page: chunk.page,
-    })),
-    visual: null,
+    citations,
+    visual: topCitation
+      ? {
+          ...topCitation,
+          label: `${topCitation.source} · page ${topCitation.page}`,
+        }
+      : null,
   };
 }
