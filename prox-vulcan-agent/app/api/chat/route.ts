@@ -16,10 +16,9 @@ export async function POST(req: NextRequest) {
     const result = await runAgent(message);
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Chat API error:", error);
-
+    console.error("Chat route error:", error);
     return NextResponse.json(
-      { error: "Something went wrong while processing the request." },
+      { error: "Internal server error." },
       { status: 500 }
     );
   }

@@ -98,7 +98,7 @@ export default function Home() {
                     <div className="mb-1 text-xs font-medium uppercase tracking-wide opacity-70">
                       {message.role === "user" ? "You" : "Assistant"}
                     </div>
-                    <p>{message.content}</p>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
                   </div>
                 </div>
               ))}
