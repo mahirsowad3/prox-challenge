@@ -91,8 +91,8 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6">
+    <main className="h-dvh overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="mx-auto flex h-full max-w-7xl flex-col px-4 py-6">
         <header className="mb-6 border-b border-zinc-800 pb-4">
           <h1 className="text-2xl font-semibold">Prox Vulcan Agent</h1>
           <p className="mt-2 text-sm text-zinc-400">
@@ -100,13 +100,13 @@ export default function Home() {
           </p>
         </header>
 
-        <div className="grid flex-1 gap-6 lg:grid-cols-[1.5fr_1fr]">
-          <section className="flex min-h-[70vh] flex-col rounded-2xl border border-zinc-800 bg-zinc-900/70">
+        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(28rem,1.1fr)]">
+          <section className="flex min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/70">
             <div className="border-b border-zinc-800 px-4 py-3">
               <h2 className="text-sm font-medium text-zinc-300">Chat</h2>
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pr-3">
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -150,14 +150,14 @@ export default function Home() {
             </form>
           </section>
 
-          <aside className="flex min-h-[70vh] flex-col rounded-2xl border border-zinc-800 bg-zinc-900/70">
+          <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70">
             <div className="border-b border-zinc-800 px-4 py-3">
               <h2 className="text-sm font-medium text-zinc-300">
                 Visual Help / Artifacts
               </h2>
             </div>
 
-            <div className="flex flex-1 flex-col gap-4 p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
                 <h3 className="mb-2 text-sm font-medium">Manual Figure</h3>
                 {latestVisual ? (

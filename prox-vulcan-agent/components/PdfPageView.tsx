@@ -12,8 +12,34 @@ const RENDER_TIMEOUT_MS = 15000;
 
 export default function PdfPageView({ source, page }: PdfPageViewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const updateWidth = () => {
+      setContainerWidth(container.clientWidth);
+    };
+
+    updateWidth();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateWidth();
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,7 +49,7 @@ export default function PdfPageView({ source, page }: PdfPageViewProps) {
     let timeoutId: number | null = null;
     const canvas = canvasRef.current;
 
-    if (!canvas) {
+    if (!canvas || containerWidth <= 0) {
       return;
     }
 
@@ -65,8 +91,7 @@ export default function PdfPageView({ source, page }: PdfPageViewProps) {
         }
 
         const initialViewport = pdfPage.getViewport({ scale: 1 });
-        const containerWidth = canvas.parentElement?.clientWidth ?? initialViewport.width;
-        const scale = Math.max(containerWidth / initialViewport.width, 1);
+        const scale = Math.max(containerWidth / initialViewport.width, 0.1);
         const viewport = pdfPage.getViewport({ scale });
         const context = canvas.getContext("2d");
 
@@ -143,7 +168,7 @@ export default function PdfPageView({ source, page }: PdfPageViewProps) {
         void pdfDocument.destroy();
       }
     };
-  }, [page, source]);
+  }, [containerWidth, page, source]);
 
   return (
     <div className="space-y-3">
@@ -159,7 +184,10 @@ export default function PdfPageView({ source, page }: PdfPageViewProps) {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-white shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
+      <div
+        ref={containerRef}
+        className="overflow-hidden rounded-2xl border border-zinc-800 bg-white shadow-[0_18px_60px_rgba(0,0,0,0.35)]"
+      >
         <canvas
           ref={canvasRef}
           className={`block w-full ${status === "ready" ? "opacity-100" : "opacity-0"}`}
