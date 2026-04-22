@@ -39,7 +39,7 @@ function scoreChunk(query: string, text: string): number {
   return score;
 }
 
-export function retrieveManualContext(query: string, limit = 5): Chunk[] {
+export function retrieveManualContext(query: string, limit = 3): Chunk[] {
   const chunks = loadChunks();
 
   return chunks

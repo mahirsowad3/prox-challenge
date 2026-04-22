@@ -18,7 +18,7 @@ export type AgentResponse = {
 };
 
 export async function runAgent(message: string): Promise<AgentResponse> {
-  const chunks = retrieveManualContext(message, 5);
+  const chunks = retrieveManualContext(message, 3);
 
   if (chunks.length === 0) {
     return {
