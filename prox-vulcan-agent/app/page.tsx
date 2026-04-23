@@ -101,18 +101,6 @@ function DutyCycleToolCard({
     tool?.amperage !== undefined ? String(tool.amperage) : ""
   );
 
-  if (!tool || tool.type !== "duty-cycle") {
-    return (
-      <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-4">
-        <h3 className="mb-2 text-sm font-medium">Interactive Tool</h3>
-        <p className="text-sm text-zinc-400">
-          Duty-cycle questions will show a calculator here with weld time and
-          cool-down guidance from the manual.
-        </p>
-      </div>
-    );
-  }
-
   const parsedAmperage = Number(amperageInput);
   const hasProcess = selectedProcess !== "";
   const hasVoltage = selectedVoltage !== "";
@@ -582,11 +570,6 @@ export default function Home() {
                 )}
               </div>
 
-              <DutyCycleToolCard
-                key={latestAssistantMessage?.id ?? "duty-cycle-tool"}
-                tool={latestTool}
-              />
-
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
                 <h3 className="mb-2 text-sm font-medium">Sources</h3>
                 {latestCitations.length > 0 ? (
@@ -597,7 +580,7 @@ export default function Home() {
                         type="button"
                         onClick={() => setSelectedCitationIndex(index)}
                         aria-pressed={index === selectedCitationIndex}
-                        className={`block w-full rounded-xl border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-zinc-500 ${
+                        className={`block w-full cursor-pointer rounded-xl border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-zinc-500 ${
                           index === selectedCitationIndex
                             ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
                             : "border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900 hover:text-white"
@@ -613,6 +596,13 @@ export default function Home() {
                   </p>
                 )}
               </div>
+
+              {latestTool?.type === "duty-cycle" ? (
+                <DutyCycleToolCard
+                  key={latestAssistantMessage?.id ?? "duty-cycle-tool"}
+                  tool={latestTool}
+                />
+              ) : null}
             </div>
           </aside>
         </div>
