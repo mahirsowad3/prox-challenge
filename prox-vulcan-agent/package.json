@@ -10,6 +10,7 @@
     "extract:pdfs": "tsx scripts/extract-pdfs.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.117",
     "@anthropic-ai/sdk": "^0.90.0",
     "next": "16.2.4",
     "pdf-parse": "^2.4.5",

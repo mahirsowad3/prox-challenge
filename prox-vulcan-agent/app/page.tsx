@@ -28,7 +28,7 @@ export default function Home() {
       id: 1,
       role: "assistant",
       content:
-        "Hi — I’m your Vulcan OmniPro 220 assistant. Ask me about setup, polarity, duty cycle, troubleshooting, or recommended settings.",
+        "Hi - I'm your Vulcan OmniPro 220 assistant. Ask me about setup, polarity, duty cycle, troubleshooting, or recommended settings.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -39,7 +39,7 @@ export default function Home() {
   const latestVisual = latestAssistantMessage?.visual ?? null;
   const latestCitations = latestAssistantMessage?.citations ?? [];
 
-  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const trimmed = input.trim();
@@ -62,7 +62,13 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error(`Server error: ${response.statusText}`);
+        const errorPayload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+
+        throw new Error(
+          errorPayload?.error || `Server error: ${response.statusText}`
+        );
       }
 
       const data = await response.json();
@@ -82,10 +88,14 @@ export default function Home() {
       const errorMessage: Message = {
         id: Date.now() + 1,
         role: "assistant",
-        content: "Sorry, something went wrong.",
+        content:
+          error instanceof Error
+            ? error.message
+            : "Sorry, something went wrong.",
         citations: [],
         visual: null,
       };
+
       setMessages((prev) => [...prev, errorMessage]);
     }
   };
@@ -110,14 +120,16 @@ export default function Home() {
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"
-                    }`}
+                  className={`flex ${
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  }`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-zinc-800 text-zinc-100"
-                      }`}
+                    className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-6 ${
+                      message.role === "user"
+                        ? "bg-blue-600 text-white"
+                        : "bg-zinc-800 text-zinc-100"
+                    }`}
                   >
                     <div className="mb-1 text-xs font-medium uppercase tracking-wide opacity-70">
                       {message.role === "user" ? "You" : "Assistant"}
@@ -194,7 +206,7 @@ export default function Home() {
                         key={`${citation.source}-${citation.page}-${index}`}
                         className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300"
                       >
-                        {citation.source} · page {citation.page}
+                        {citation.source} - page {citation.page}
                       </div>
                     ))}
                   </div>

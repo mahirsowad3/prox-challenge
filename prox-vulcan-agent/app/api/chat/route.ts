@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -17,8 +19,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Chat route error:", error);
+
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal server error.";
+
     return NextResponse.json(
-      { error: "Internal server error." },
+      { error: errorMessage },
       { status: 500 }
     );
   }
