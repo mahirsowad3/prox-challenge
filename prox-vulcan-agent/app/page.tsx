@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import PdfPageView from "@/components/PdfPageView";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Citation = {
   source: string;
@@ -21,6 +23,38 @@ type Message = {
   citations?: Citation[];
   visual?: Visual | null;
 };
+
+function AssistantMessageContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => (
+          <p className="mb-3 last:mb-0">{children}</p>
+        ),
+        ol: ({ children }) => (
+          <ol className="my-4 list-decimal space-y-3 pl-5">{children}</ol>
+        ),
+        ul: ({ children }) => (
+          <ul className="my-4 list-disc space-y-3 pl-5">{children}</ul>
+        ),
+        li: ({ children }) => <li className="pl-1">{children}</li>,
+        strong: ({ children }) => (
+          <strong className="rounded-md bg-amber-300/10 px-1.5 py-0.5 font-bold text-amber-100">
+            {children}
+          </strong>
+        ),
+        code: ({ children }) => (
+          <code className="rounded bg-zinc-950/70 px-1.5 py-0.5 font-mono text-[0.85em] text-zinc-100">
+            {children}
+          </code>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
@@ -138,7 +172,13 @@ export default function Home() {
                     <div className="mb-1 text-xs font-medium uppercase tracking-wide opacity-70">
                       {message.role === "user" ? "You" : "Assistant"}
                     </div>
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    {message.role === "assistant" ? (
+                      <div className="text-zinc-100">
+                        <AssistantMessageContent content={message.content} />
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    )}
                   </div>
                 </div>
               ))}
