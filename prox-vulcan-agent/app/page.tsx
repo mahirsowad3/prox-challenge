@@ -32,6 +32,7 @@ export default function Home() {
     },
   ]);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const latestAssistantMessage = [...messages]
     .reverse()
@@ -43,7 +44,7 @@ export default function Home() {
     e.preventDefault();
 
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now(),
@@ -53,6 +54,7 @@ export default function Home() {
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
 
     try {
       const response = await fetch("/api/chat", {
@@ -97,6 +99,8 @@ export default function Home() {
       };
 
       setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -138,6 +142,28 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-2xl bg-zinc-800 px-4 py-3 text-sm leading-6 text-zinc-100">
+                    <div className="mb-1 text-xs font-medium uppercase tracking-wide opacity-70">
+                      Assistant
+                    </div>
+                    <div
+                      className="flex items-center gap-3 text-zinc-300"
+                      role="status"
+                    >
+                      <span>
+                        Searching the manuals and generating an answer...
+                      </span>
+                      <span
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-200"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">Generating response</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <form
@@ -150,13 +176,15 @@ export default function Home() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask about polarity, duty cycle, porosity, settings..."
-                  className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm outline-none transition focus:border-zinc-500"
+                  disabled={isLoading}
+                  className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 <button
                   type="submit"
-                  className="rounded-xl bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-zinc-200"
+                  disabled={isLoading}
+                  className="rounded-xl bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Send
+                  {isLoading ? "Thinking..." : "Send"}
                 </button>
               </div>
             </form>
