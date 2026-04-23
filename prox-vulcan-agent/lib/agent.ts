@@ -1,4 +1,9 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+  buildDutyCycleTool,
+  DUTY_CYCLE_MANUAL_PAGE,
+  type DutyCycleToolPayload,
+} from "@/lib/duty-cycle";
 import { retrieveManualContext } from "@/lib/retrieval";
 
 export type Citation = {
@@ -16,6 +21,7 @@ export type AgentResponse = {
   answer: string;
   citations: Citation[];
   visual: Visual | null;
+  tool: DutyCycleToolPayload | null;
 };
 
 type StructuredAgentResponse = {
@@ -113,20 +119,62 @@ function isCitationAllowed(citation: Citation, allowed: Set<string>): boolean {
   return allowed.has(`${citation.source}:${citation.page}`);
 }
 
-function normalizeAgentResponse(
+function prioritizeDutyCycleCitation(
+  citations: Citation[],
+  tool: DutyCycleToolPayload | null
+): Citation[] {
+  if (!tool || tool.type !== "duty-cycle") {
+    return citations;
+  }
+
+  const prioritized = citations.find(
+    (citation) =>
+      citation.source === DUTY_CYCLE_MANUAL_PAGE.source &&
+      citation.page === DUTY_CYCLE_MANUAL_PAGE.page
+  );
+
+  if (!prioritized) {
+    return citations;
+  }
+
+  return [
+    prioritized,
+    ...citations.filter(
+      (citation) =>
+        !(
+          citation.source === prioritized.source && citation.page === prioritized.page
+        )
+    ),
+  ];
+}
+
+export function normalizeAgentResponse(
   response: StructuredAgentResponse,
-  allowedCitations: Set<string>
+  allowedCitations: Set<string>,
+  tool: DutyCycleToolPayload | null
 ): AgentResponse {
-  const citations = dedupeCitations(response.citations).filter((citation) =>
+  const filteredCitations = dedupeCitations(response.citations).filter((citation) =>
     isCitationAllowed(citation, allowedCitations)
   );
+  const citations = prioritizeDutyCycleCitation(filteredCitations, tool);
 
   const visualCitation =
     response.visual && isCitationAllowed(response.visual, allowedCitations)
       ? response.visual
       : null;
 
-  const selectedVisual = visualCitation ?? citations[0] ?? null;
+  const selectedVisual =
+    (tool &&
+    citations.some(
+      (citation) =>
+        citation.source === DUTY_CYCLE_MANUAL_PAGE.source &&
+        citation.page === DUTY_CYCLE_MANUAL_PAGE.page
+    )
+      ? DUTY_CYCLE_MANUAL_PAGE
+      : null) ??
+    visualCitation ??
+    citations[0] ??
+    null;
 
   return {
     answer: response.answer.trim(),
@@ -137,6 +185,7 @@ function normalizeAgentResponse(
           label: `${selectedVisual.source} - page ${selectedVisual.page}`,
         }
       : null,
+    tool,
   };
 }
 
@@ -200,6 +249,7 @@ async function queryClaudeWithContext(
 }
 
 export async function runAgent(message: string): Promise<AgentResponse> {
+  const tool = buildDutyCycleTool(message);
   const chunks = retrieveManualContext(message, 5);
 
   if (chunks.length === 0) {
@@ -208,6 +258,7 @@ export async function runAgent(message: string): Promise<AgentResponse> {
         "Sorry, I could not find anything relevant in the manuals yet. Try asking with more detail, like the welding process or voltage.",
       citations: [],
       visual: null,
+      tool,
     };
   }
 
@@ -233,7 +284,8 @@ export async function runAgent(message: string): Promise<AgentResponse> {
   const structuredResponse = await queryClaudeWithContext(message, contextText);
   const normalizedResponse = normalizeAgentResponse(
     structuredResponse,
-    allowedCitations
+    allowedCitations,
+    tool
   );
 
   if (!normalizedResponse.answer) {
@@ -247,6 +299,7 @@ export async function runAgent(message: string): Promise<AgentResponse> {
             label: `${topCitation.source} - page ${topCitation.page}`,
           }
         : null,
+      tool,
     };
   }
 

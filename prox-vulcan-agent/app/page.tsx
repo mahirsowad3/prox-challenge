@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import PdfPageView from "@/components/PdfPageView";
+import {
+  DUTY_CYCLE_RATINGS,
+  estimateDutyCycleResult,
+  findExactDutyCycleResult,
+  type DutyCycleToolPayload,
+  type InputVoltage,
+  type WeldingProcess,
+} from "@/lib/duty-cycle";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -22,7 +30,11 @@ type Message = {
   content: string;
   citations?: Citation[];
   visual?: Visual | null;
+  tool?: DutyCycleToolPayload | null;
 };
+
+const PROCESS_OPTIONS: WeldingProcess[] = ["MIG", "TIG", "Stick"];
+const VOLTAGE_OPTIONS: InputVoltage[] = [120, 240];
 
 function getInitialCitationIndex(
   citations: Citation[],
@@ -74,6 +86,222 @@ function AssistantMessageContent({ content }: { content: string }) {
   );
 }
 
+function DutyCycleToolCard({
+  tool,
+}: {
+  tool: DutyCycleToolPayload | null | undefined;
+}) {
+  const [selectedProcess, setSelectedProcess] = useState<WeldingProcess | "">(
+    tool?.process ?? ""
+  );
+  const [selectedVoltage, setSelectedVoltage] = useState<InputVoltage | "">(
+    tool?.inputVoltage ?? ""
+  );
+  const [amperageInput, setAmperageInput] = useState(
+    tool?.amperage !== undefined ? String(tool.amperage) : ""
+  );
+
+  if (!tool || tool.type !== "duty-cycle") {
+    return (
+      <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-4">
+        <h3 className="mb-2 text-sm font-medium">Interactive Tool</h3>
+        <p className="text-sm text-zinc-400">
+          Duty-cycle questions will show a calculator here with weld time and
+          cool-down guidance from the manual.
+        </p>
+      </div>
+    );
+  }
+
+  const parsedAmperage = Number(amperageInput);
+  const hasProcess = selectedProcess !== "";
+  const hasVoltage = selectedVoltage !== "";
+  const hasAmperage = amperageInput.trim() !== "" && Number.isFinite(parsedAmperage);
+  const ratedPoints =
+    hasProcess && hasVoltage
+      ? DUTY_CYCLE_RATINGS[selectedProcess][selectedVoltage]
+      : [];
+  const exactResult =
+    hasProcess && hasVoltage && hasAmperage
+      ? findExactDutyCycleResult(selectedProcess, selectedVoltage, parsedAmperage)
+      : undefined;
+  const estimatedResult =
+    hasProcess && hasVoltage && hasAmperage && !exactResult
+      ? estimateDutyCycleResult(selectedProcess, selectedVoltage, parsedAmperage)
+      : undefined;
+  const displayedResult = exactResult ?? estimatedResult ?? tool.result;
+  const displayedNotes =
+    hasProcess && hasVoltage && hasAmperage && !exactResult && estimatedResult
+      ? [
+          `The manual does not list an exact duty cycle rating at ${parsedAmperage}A for ${selectedProcess} on ${selectedVoltage}V.`,
+          "Estimated values are interpolated between the two manual-listed ratings for this process and voltage.",
+        ]
+      : tool.notes;
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+      <div className="mb-4">
+        <h3 className="text-sm font-medium">{tool.title}</h3>
+        <p className="mt-2 text-sm text-zinc-400">
+          Use the manual’s rated points to see how many minutes you can weld in
+          a 10-minute window before the machine should rest.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Process
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {PROCESS_OPTIONS.map((process) => (
+              <button
+                key={process}
+                type="button"
+                onClick={() => setSelectedProcess(process)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  selectedProcess === process
+                    ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
+                    : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                }`}
+              >
+                {process}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Input Voltage
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {VOLTAGE_OPTIONS.map((voltage) => (
+              <button
+                key={voltage}
+                type="button"
+                onClick={() => setSelectedVoltage(voltage)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  selectedVoltage === voltage
+                    ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
+                    : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                }`}
+              >
+                {voltage}V
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label
+            htmlFor="duty-cycle-amperage"
+            className="mb-2 block text-xs font-medium uppercase tracking-wide text-zinc-500"
+          >
+            Amperage
+          </label>
+          <input
+            id="duty-cycle-amperage"
+            type="number"
+            min="1"
+            step="1"
+            value={amperageInput}
+            onChange={(event) => setAmperageInput(event.target.value)}
+            placeholder="Enter amperage"
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm outline-none transition focus:border-zinc-500"
+          />
+        </div>
+
+        {ratedPoints.length > 0 ? (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Rated Points
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {ratedPoints.map((rating) => (
+                <button
+                  key={`${rating.amperage}-${rating.dutyCyclePercent}`}
+                  type="button"
+                  onClick={() => setAmperageInput(String(rating.amperage))}
+                  className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                >
+                  {rating.amperage}A at {rating.dutyCyclePercent}%
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {displayedResult ? (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Result
+                </p>
+                <p className="text-sm text-zinc-300">
+                  {selectedProcess || tool.process || "Selected process"} on{" "}
+                  {selectedVoltage || tool.inputVoltage || "selected voltage"}V
+                  {hasAmperage ? ` at ${parsedAmperage}A` : ""}
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-medium uppercase tracking-wide ${
+                  displayedResult.source === "manual"
+                    ? "bg-emerald-500/10 text-emerald-300"
+                    : "bg-amber-500/10 text-amber-300"
+                }`}
+              >
+                {displayedResult.source === "manual" ? "Manual" : "Estimated"}
+              </span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <p className="text-xs uppercase tracking-wide text-zinc-500">
+                  Duty Cycle
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {displayedResult.dutyCyclePercent}%
+                </p>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <p className="text-xs uppercase tracking-wide text-zinc-500">
+                  Weld Time
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {displayedResult.weldMinutes} min
+                </p>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <p className="text-xs uppercase tracking-wide text-zinc-500">
+                  Rest Time
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {displayedResult.restMinutes} min
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
+            Select a process and voltage, then enter an amperage to calculate
+            duty cycle guidance.
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {displayedNotes.map((note) => (
+            <p key={note} className="text-sm text-zinc-400">
+              {note}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [selectedCitationIndex, setSelectedCitationIndex] = useState(0);
@@ -93,6 +321,7 @@ export default function Home() {
     .find((message) => message.role === "assistant");
   const latestVisual = latestAssistantMessage?.visual ?? null;
   const latestCitations = latestAssistantMessage?.citations ?? [];
+  const latestTool = latestAssistantMessage?.tool ?? null;
   const selectedCitation = latestCitations[selectedCitationIndex] ?? null;
   const displayedVisual = selectedCitation
     ? {
@@ -157,6 +386,7 @@ export default function Home() {
       const data = await response.json();
       const citations = data.citations ?? [];
       const visual = data.visual ?? null;
+      const tool = data.tool ?? null;
 
       const assistantMessage: Message = {
         id: Date.now() + 1,
@@ -164,6 +394,7 @@ export default function Home() {
         content: data.answer ?? "No response received.",
         citations,
         visual,
+        tool,
       };
 
       setSelectedCitationIndex(getInitialCitationIndex(citations, visual));
@@ -180,6 +411,7 @@ export default function Home() {
             : "Sorry, something went wrong.",
         citations: [],
         visual: null,
+        tool: null,
       };
 
       setSelectedCitationIndex(0);
@@ -350,13 +582,10 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-950 p-4">
-                <h3 className="mb-2 text-sm font-medium">Interactive Tool</h3>
-                <p className="text-sm text-zinc-400">
-                  Later, this panel can show a polarity diagram, duty cycle
-                  lookup, or troubleshooting flowchart.
-                </p>
-              </div>
+              <DutyCycleToolCard
+                key={latestAssistantMessage?.id ?? "duty-cycle-tool"}
+                tool={latestTool}
+              />
 
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
                 <h3 className="mb-2 text-sm font-medium">Sources</h3>
