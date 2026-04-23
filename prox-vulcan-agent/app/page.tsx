@@ -24,6 +24,24 @@ type Message = {
   visual?: Visual | null;
 };
 
+function getInitialCitationIndex(
+  citations: Citation[],
+  visual: Visual | null | undefined
+) {
+  if (citations.length === 0) {
+    return 0;
+  }
+
+  const visualIndex = visual
+    ? citations.findIndex(
+        (citation) =>
+          citation.source === visual.source && citation.page === visual.page
+      )
+    : -1;
+
+  return visualIndex >= 0 ? visualIndex : 0;
+}
+
 function AssistantMessageContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -58,6 +76,7 @@ function AssistantMessageContent({ content }: { content: string }) {
 
 export default function Home() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [selectedCitationIndex, setSelectedCitationIndex] = useState(0);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -74,6 +93,14 @@ export default function Home() {
     .find((message) => message.role === "assistant");
   const latestVisual = latestAssistantMessage?.visual ?? null;
   const latestCitations = latestAssistantMessage?.citations ?? [];
+  const selectedCitation = latestCitations[selectedCitationIndex] ?? null;
+  const displayedVisual = selectedCitation
+    ? {
+        ...selectedCitation,
+        label: `${selectedCitation.source} - page ${selectedCitation.page}`,
+      }
+    : latestVisual;
+  const hasMultipleCitations = latestCitations.length > 1;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({
@@ -81,6 +108,18 @@ export default function Home() {
       block: "end",
     });
   }, [messages, isLoading]);
+
+  const selectAdjacentCitation = (direction: -1 | 1) => {
+    if (latestCitations.length <= 1) {
+      return;
+    }
+
+    setSelectedCitationIndex(
+      (currentIndex) =>
+        (currentIndex + direction + latestCitations.length) %
+        latestCitations.length
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -116,15 +155,18 @@ export default function Home() {
       }
 
       const data = await response.json();
+      const citations = data.citations ?? [];
+      const visual = data.visual ?? null;
 
       const assistantMessage: Message = {
         id: Date.now() + 1,
         role: "assistant",
         content: data.answer ?? "No response received.",
-        citations: data.citations ?? [],
-        visual: data.visual ?? null,
+        citations,
+        visual,
       };
 
+      setSelectedCitationIndex(getInitialCitationIndex(citations, visual));
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error(error);
@@ -140,6 +182,7 @@ export default function Home() {
         visual: null,
       };
 
+      setSelectedCitationIndex(0);
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -247,15 +290,56 @@ export default function Home() {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-                <h3 className="mb-2 text-sm font-medium">Manual Figure</h3>
-                {latestVisual ? (
+              <div
+                className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 outline-none focus-visible:border-zinc-500"
+                tabIndex={displayedVisual && hasMultipleCitations ? 0 : -1}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft") {
+                    event.preventDefault();
+                    selectAdjacentCitation(-1);
+                  }
+
+                  if (event.key === "ArrowRight") {
+                    event.preventDefault();
+                    selectAdjacentCitation(1);
+                  }
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-medium">Manual Figure</h3>
+                  {hasMultipleCitations ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectAdjacentCitation(-1)}
+                        className="rounded-lg border border-zinc-700 px-2 py-1 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                        aria-label="Show previous source"
+                      >
+                        &larr;
+                      </button>
+                      <span className="text-xs text-zinc-500">
+                        {selectedCitationIndex + 1} / {latestCitations.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => selectAdjacentCitation(1)}
+                        className="rounded-lg border border-zinc-700 px-2 py-1 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                        aria-label="Show next source"
+                      >
+                        &rarr;
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                {displayedVisual ? (
                   <div className="space-y-3">
-                    <p className="text-sm text-zinc-400">{latestVisual.label}</p>
+                    <p className="text-sm text-zinc-400">
+                      {displayedVisual.label}
+                    </p>
                     <PdfPageView
-                      key={`${latestAssistantMessage?.id ?? "preview"}-${latestVisual.source}-${latestVisual.page}`}
-                      source={latestVisual.source}
-                      page={latestVisual.page}
+                      key={`${latestAssistantMessage?.id ?? "preview"}-${displayedVisual.source}-${displayedVisual.page}`}
+                      source={displayedVisual.source}
+                      page={displayedVisual.page}
                     />
                   </div>
                 ) : (
@@ -279,12 +363,19 @@ export default function Home() {
                 {latestCitations.length > 0 ? (
                   <div className="space-y-2">
                     {latestCitations.map((citation, index) => (
-                      <div
+                      <button
                         key={`${citation.source}-${citation.page}-${index}`}
-                        className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300"
+                        type="button"
+                        onClick={() => setSelectedCitationIndex(index)}
+                        aria-pressed={index === selectedCitationIndex}
+                        className={`block w-full rounded-xl border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-zinc-500 ${
+                          index === selectedCitationIndex
+                            ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
+                            : "border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900 hover:text-white"
+                        }`}
                       >
                         {citation.source} - page {citation.page}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
