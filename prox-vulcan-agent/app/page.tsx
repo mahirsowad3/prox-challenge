@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PdfPageView from "@/components/PdfPageView";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -57,6 +57,7 @@ function AssistantMessageContent({ content }: { content: string }) {
 }
 
 export default function Home() {
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -73,6 +74,13 @@ export default function Home() {
     .find((message) => message.role === "assistant");
   const latestVisual = latestAssistantMessage?.visual ?? null;
   const latestCitations = latestAssistantMessage?.citations ?? [];
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages, isLoading]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -204,6 +212,7 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              <div ref={chatEndRef} />
             </div>
 
             <form
