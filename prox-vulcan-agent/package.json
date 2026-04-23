@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "extract:pdfs": "tsx scripts/extract-pdfs.ts"
+    "extract:pdfs": "tsx scripts/extract-pdfs.ts",
+    "build:retrieval": "tsx scripts/extract-pdfs.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.117",

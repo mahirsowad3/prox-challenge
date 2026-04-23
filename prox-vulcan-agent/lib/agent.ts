@@ -200,7 +200,7 @@ async function queryClaudeWithContext(
 }
 
 export async function runAgent(message: string): Promise<AgentResponse> {
-  const chunks = retrieveManualContext(message, 3);
+  const chunks = retrieveManualContext(message, 5);
 
   if (chunks.length === 0) {
     return {
@@ -222,7 +222,12 @@ export async function runAgent(message: string): Promise<AgentResponse> {
   );
 
   const contextText = chunks
-    .map((chunk) => `[${chunk.source} - page ${chunk.page}]\n${chunk.text}`)
+    .map((chunk) =>
+      [
+        `[${chunk.source} - page ${chunk.page}${chunk.sectionTitle ? ` - ${chunk.sectionTitle}` : ""}]`,
+        chunk.text,
+      ].join("\n")
+    )
     .join("\n\n");
 
   const structuredResponse = await queryClaudeWithContext(message, contextText);

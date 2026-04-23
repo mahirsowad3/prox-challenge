@@ -1,13 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { PDFParse } from "pdf-parse";
-
-type PageChunk = {
-  id: string;
-  source: string;
-  page: number;
-  text: string;
-};
+import {
+  buildRetrievalIndex,
+  normalizeForDisplay,
+  type PageChunk,
+} from "../lib/retrieval-data";
 
 const INPUT_DIR = path.join(process.cwd(), "files");
 const OUTPUT_DIR = path.join(process.cwd(), "data");
@@ -19,11 +17,7 @@ const PDF_FILES = [
 ];
 
 function normalizeText(text: string): string {
-  return text
-    .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return normalizeForDisplay(text);
 }
 
 async function extractPdfByPage(filePath: string, fileName: string): Promise<PageChunk[]> {
@@ -81,6 +75,17 @@ async function main() {
   fs.writeFileSync(combinedPath, JSON.stringify(allChunks, null, 2), "utf-8");
 
   console.log(`Saved combined output to ${combinedPath}`);
+
+  const retrievalIndex = buildRetrievalIndex(allChunks);
+  const retrievalPath = path.join(OUTPUT_DIR, "retrieval-index-v1.json");
+
+  fs.writeFileSync(
+    retrievalPath,
+    JSON.stringify(retrievalIndex, null, 2),
+    "utf-8"
+  );
+
+  console.log(`Saved retrieval index to ${retrievalPath}`);
 }
 
 main().catch((error) => {
