@@ -10,6 +10,12 @@ import {
   type InputVoltage,
   type WeldingProcess,
 } from "@/lib/duty-cycle";
+import { type ToolPayload } from "@/lib/tooling";
+import {
+  type TroubleshootingFlowchartToolPayload,
+  type TroubleshootingIssueId,
+  type TroubleshootingProcess,
+} from "@/lib/troubleshooting";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -30,11 +36,16 @@ type Message = {
   content: string;
   citations?: Citation[];
   visual?: Visual | null;
-  tool?: DutyCycleToolPayload | null;
+  tool?: ToolPayload | null;
 };
 
 const PROCESS_OPTIONS: WeldingProcess[] = ["MIG", "TIG", "Stick"];
 const VOLTAGE_OPTIONS: InputVoltage[] = [120, 240];
+const TROUBLESHOOTING_PROCESS_OPTIONS: TroubleshootingProcess[] = [
+  "MIG",
+  "TIG",
+  "Stick",
+];
 
 function getInitialCitationIndex(
   citations: Citation[],
@@ -100,6 +111,10 @@ function DutyCycleToolCard({
   const [amperageInput, setAmperageInput] = useState(
     tool?.amperage !== undefined ? String(tool.amperage) : ""
   );
+
+  if (!tool) {
+    return null;
+  }
 
   const parsedAmperage = Number(amperageInput);
   const hasProcess = selectedProcess !== "";
@@ -280,6 +295,226 @@ function DutyCycleToolCard({
 
         <div className="space-y-2">
           {displayedNotes.map((note) => (
+            <p key={note} className="text-sm text-zinc-400">
+              {note}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TroubleshootingFlowchartCard({
+  tool,
+}: {
+  tool: TroubleshootingFlowchartToolPayload | null | undefined;
+}) {
+  const [selectedProcess, setSelectedProcess] = useState<TroubleshootingProcess | "">(
+    tool?.process ?? ""
+  );
+  const [selectedIssueId, setSelectedIssueId] = useState<TroubleshootingIssueId | "">(
+    tool?.issueId ?? ""
+  );
+  const [currentNodeId, setCurrentNodeId] = useState(tool?.startNodeId ?? "");
+  const [history, setHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedProcess(tool?.process ?? "");
+    setSelectedIssueId(tool?.issueId ?? "");
+    setCurrentNodeId(tool?.startNodeId ?? "");
+    setHistory([]);
+  }, [tool]);
+
+  if (!tool) {
+    return null;
+  }
+
+  const availableIssues = tool.issues.filter((issue) =>
+    selectedProcess ? issue.process === selectedProcess : true
+  );
+  const activeIssueId = selectedIssueId || tool.issueId || "";
+  const activeFlow = activeIssueId ? tool.flows[activeIssueId] : undefined;
+  const currentNode =
+    activeFlow && currentNodeId ? activeFlow.nodes[currentNodeId] : undefined;
+  const hasStartedFlow = Boolean(activeFlow && currentNode);
+
+  const beginIssue = (issueId: TroubleshootingIssueId) => {
+    const flow = tool.flows[issueId];
+
+    setSelectedProcess(flow.process);
+    setSelectedIssueId(issueId);
+    setCurrentNodeId(flow.rootNodeId);
+    setHistory([]);
+  };
+
+  const handleAnswer = (targetNodeId: string) => {
+    if (!currentNode) {
+      return;
+    }
+
+    setHistory((previous) => [...previous, currentNode.id]);
+    setCurrentNodeId(targetNodeId);
+  };
+
+  const handleBack = () => {
+    const previousNodeId = history[history.length - 1];
+
+    if (!previousNodeId) {
+      return;
+    }
+
+    setHistory((previous) => previous.slice(0, -1));
+    setCurrentNodeId(previousNodeId);
+  };
+
+  const handleRestart = () => {
+    if (!activeFlow) {
+      return;
+    }
+
+    setCurrentNodeId(activeFlow.rootNodeId);
+    setHistory([]);
+  };
+
+  const handleChooseAnotherIssue = () => {
+    setSelectedIssueId("");
+    setCurrentNodeId("");
+    setHistory([]);
+  };
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+      <div className="mb-4">
+        <h3 className="text-sm font-medium">{tool.title}</h3>
+        <p className="mt-2 text-sm text-zinc-400">
+          Walk through the manual's troubleshooting checks one step at a time.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {hasStartedFlow && activeFlow && currentNode ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-blue-100">
+                {activeFlow.process}
+              </span>
+              <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300">
+                Issue: {activeFlow.label}
+              </span>
+              {currentNode.source && currentNode.page ? (
+                <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">
+                  {currentNode.source} - page {currentNode.page}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+              <p className="text-base font-medium text-white">{currentNode.prompt}</p>
+              {currentNode.note ? (
+                <p className="mt-2 text-sm text-zinc-400">{currentNode.note}</p>
+              ) : null}
+
+              {currentNode.terminalOutcome ? (
+                <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-100">
+                  {currentNode.terminalOutcome}
+                </div>
+              ) : null}
+
+              {currentNode.answers.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {currentNode.answers.map((answer) => (
+                    <button
+                      key={`${currentNode.id}-${answer.targetNodeId}`}
+                      type="button"
+                      onClick={() => handleAnswer(answer.targetNodeId)}
+                      className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 transition hover:border-zinc-500 hover:text-white"
+                    >
+                      {answer.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={history.length === 0}
+                className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Restart
+              </button>
+              <button
+                type="button"
+                onClick={handleChooseAnotherIssue}
+                className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Change issue
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Process
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {TROUBLESHOOTING_PROCESS_OPTIONS.map((process) => (
+                  <button
+                    key={process}
+                    type="button"
+                    onClick={() => setSelectedProcess(process)}
+                    className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                      selectedProcess === process
+                        ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
+                        : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    }`}
+                  >
+                    {process}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Symptom
+              </p>
+              {selectedProcess ? (
+                <div className="flex flex-wrap gap-2">
+                  {availableIssues.map((issue) => (
+                    <button
+                      key={issue.id}
+                      type="button"
+                      onClick={() => beginIssue(issue.id)}
+                      className="rounded-xl border border-zinc-700 px-3 py-2 text-left text-sm text-zinc-200 transition hover:border-zinc-500 hover:text-white"
+                    >
+                      {issue.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-400">
+                  Select a process first, then choose the symptom that best matches
+                  what you are seeing.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {tool.notes.map((note) => (
             <p key={note} className="text-sm text-zinc-400">
               {note}
             </p>
@@ -600,6 +835,13 @@ export default function Home() {
               {latestTool?.type === "duty-cycle" ? (
                 <DutyCycleToolCard
                   key={latestAssistantMessage?.id ?? "duty-cycle-tool"}
+                  tool={latestTool}
+                />
+              ) : null}
+
+              {latestTool?.type === "troubleshooting-flowchart" ? (
+                <TroubleshootingFlowchartCard
+                  key={latestAssistantMessage?.id ?? "troubleshooting-tool"}
                   tool={latestTool}
                 />
               ) : null}

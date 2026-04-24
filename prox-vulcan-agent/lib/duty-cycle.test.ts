@@ -6,6 +6,8 @@ import {
   findExactDutyCycleResult,
 } from "@/lib/duty-cycle";
 import { normalizeAgentResponse } from "@/lib/agent";
+import { buildToolPayload } from "@/lib/tooling";
+import { buildTroubleshootingTool } from "@/lib/troubleshooting";
 
 function runTest(name: string, assertion: () => void) {
   try {
@@ -66,8 +68,36 @@ runTest("non-duty-cycle questions do not produce a tool payload", () => {
   assert.equal(buildDutyCycleTool("What polarity do I need for TIG?"), null);
 });
 
+runTest("troubleshooting symptom questions return a troubleshooting tool payload", () => {
+  const tool = buildTroubleshootingTool("My MIG wire keeps bird nesting during welding.");
+
+  assert.equal(tool?.type, "troubleshooting-flowchart");
+  assert.equal(tool?.process, "MIG");
+  assert.equal(tool?.issueId, "mig-birds-nest");
+  assert.equal(tool?.startNodeId, "mig-birds-nest-step-1");
+});
+
+runTest("ambiguous troubleshooting questions fall back to the picker", () => {
+  const tool = buildTroubleshootingTool("Can you help me troubleshoot this welder?");
+
+  assert.equal(tool?.type, "troubleshooting-flowchart");
+  assert.equal(tool?.issueId, undefined);
+  assert.equal(tool?.startNodeId, undefined);
+});
+
+runTest("non-troubleshooting questions do not produce a troubleshooting tool payload", () => {
+  assert.equal(buildTroubleshootingTool("What polarity do I need for TIG?"), null);
+});
+
+runTest("shared tool builder prioritizes troubleshooting for relevant symptoms", () => {
+  const tool = buildToolPayload("My LCD does not light when I turn on Stick mode.");
+
+  assert.equal(tool?.type, "troubleshooting-flowchart");
+  assert.equal(tool?.issueId, "stick-lcd-no-light");
+});
+
 runTest("agent normalization keeps citations constrained and attaches the tool", () => {
-  const tool = buildDutyCycleTool("What's the duty cycle for MIG welding at 200A on 240V?");
+  const tool = buildToolPayload("What's the duty cycle for MIG welding at 200A on 240V?");
   const response: Parameters<typeof normalizeAgentResponse>[0] = {
     answer: "At 200A on 240V in MIG, the rated duty cycle is 25%.",
     citations: [
@@ -105,4 +135,29 @@ runTest("weld and rest time are calculated within a 10-minute window", () => {
 
 runTest("out-of-range amperage does not produce an estimate", () => {
   assert.equal(estimateDutyCycleResult("Stick", 120, 140), undefined);
+});
+
+runTest("agent normalization prefers the troubleshooting manual page for troubleshooting tools", () => {
+  const tool = buildToolPayload("My MIG wire keeps bird nesting during welding.");
+  const response: Parameters<typeof normalizeAgentResponse>[0] = {
+    answer: "Check feed pressure, contact tip size, and the gun cable connector.",
+    citations: [
+      { source: "selection-chart.pdf", page: 3 },
+      { source: "owner-manual.pdf", page: 42 },
+    ],
+    visual: { source: "selection-chart.pdf", page: 3 },
+  };
+
+  const normalized = normalizeAgentResponse(
+    response,
+    new Set(["owner-manual.pdf:42", "selection-chart.pdf:3"]),
+    tool
+  );
+
+  assert.equal(normalized.tool?.type, "troubleshooting-flowchart");
+  assert.deepEqual(normalized.visual, {
+    source: "owner-manual.pdf",
+    page: 42,
+    label: "owner-manual.pdf - page 42",
+  });
 });

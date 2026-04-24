@@ -1,9 +1,9 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import {
-  buildDutyCycleTool,
-  DUTY_CYCLE_MANUAL_PAGE,
-  type DutyCycleToolPayload,
-} from "@/lib/duty-cycle";
+  buildToolPayload,
+  getPreferredToolVisual,
+  type ToolPayload,
+} from "@/lib/tooling";
 import { retrieveManualContext } from "@/lib/retrieval";
 
 export type Citation = {
@@ -21,7 +21,7 @@ export type AgentResponse = {
   answer: string;
   citations: Citation[];
   visual: Visual | null;
-  tool: DutyCycleToolPayload | null;
+  tool: ToolPayload | null;
 };
 
 type StructuredAgentResponse = {
@@ -121,16 +121,18 @@ function isCitationAllowed(citation: Citation, allowed: Set<string>): boolean {
 
 function prioritizeDutyCycleCitation(
   citations: Citation[],
-  tool: DutyCycleToolPayload | null
+  tool: ToolPayload | null
 ): Citation[] {
-  if (!tool || tool.type !== "duty-cycle") {
+  const preferredVisual = getPreferredToolVisual(tool);
+
+  if (!preferredVisual) {
     return citations;
   }
 
   const prioritized = citations.find(
     (citation) =>
-      citation.source === DUTY_CYCLE_MANUAL_PAGE.source &&
-      citation.page === DUTY_CYCLE_MANUAL_PAGE.page
+      citation.source === preferredVisual.source &&
+      citation.page === preferredVisual.page
   );
 
   if (!prioritized) {
@@ -151,7 +153,7 @@ function prioritizeDutyCycleCitation(
 export function normalizeAgentResponse(
   response: StructuredAgentResponse,
   allowedCitations: Set<string>,
-  tool: DutyCycleToolPayload | null
+  tool: ToolPayload | null
 ): AgentResponse {
   const filteredCitations = dedupeCitations(response.citations).filter((citation) =>
     isCitationAllowed(citation, allowedCitations)
@@ -162,15 +164,16 @@ export function normalizeAgentResponse(
     response.visual && isCitationAllowed(response.visual, allowedCitations)
       ? response.visual
       : null;
+  const preferredVisual = getPreferredToolVisual(tool);
 
   const selectedVisual =
-    (tool &&
+    (preferredVisual &&
     citations.some(
       (citation) =>
-        citation.source === DUTY_CYCLE_MANUAL_PAGE.source &&
-        citation.page === DUTY_CYCLE_MANUAL_PAGE.page
+        citation.source === preferredVisual.source &&
+        citation.page === preferredVisual.page
     )
-      ? DUTY_CYCLE_MANUAL_PAGE
+      ? preferredVisual
       : null) ??
     visualCitation ??
     citations[0] ??
@@ -249,7 +252,7 @@ async function queryClaudeWithContext(
 }
 
 export async function runAgent(message: string): Promise<AgentResponse> {
-  const tool = buildDutyCycleTool(message);
+  const tool = buildToolPayload(message);
   const chunks = retrieveManualContext(message, 5);
 
   if (chunks.length === 0) {
