@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import {
   buildDutyCycleTool,
   calculateDutyCycleWindow,
-  estimateDutyCycleResult,
   findExactDutyCycleResult,
 } from "@/lib/duty-cycle";
 import { normalizeAgentResponse } from "@/lib/agent";
@@ -31,18 +30,16 @@ runTest("exact manual duty cycle points return weld and rest time", () => {
   });
 });
 
-runTest("hybrid mode returns an estimated value for unsupported amperage", () => {
+runTest("unsupported amperage returns no result and points to manual ratings", () => {
   const tool = buildDutyCycleTool("How long can I weld with MIG on 240V at 150A?");
 
   assert.equal(tool?.type, "duty-cycle");
   assert.equal(tool?.process, "MIG");
   assert.equal(tool?.inputVoltage, 240);
   assert.equal(tool?.amperage, 150);
-  assert.equal(tool?.result?.source, "estimated");
-  assert.equal(tool?.result?.dutyCyclePercent, 69.1);
-  assert.equal(tool?.result?.weldMinutes, 6.9);
-  assert.equal(tool?.result?.restMinutes, 3.1);
-  assert.match(tool?.notes.join(" ") ?? "", /does not list an exact duty cycle/i);
+  assert.equal(tool?.result, undefined);
+  assert.match(tool?.notes.join(" ") ?? "", /does not list a duty cycle rating/i);
+  assert.match(tool?.notes.join(" ") ?? "", /manual-rated amperages/i);
 });
 
 runTest("incomplete duty cycle questions still return a tool payload", () => {
@@ -59,7 +56,7 @@ runTest("incomplete duty cycle questions still return a tool payload", () => {
     notes: [
       "Duty cycle is the number of welding minutes allowed within a 10-minute window.",
       "Manual-listed ratings are shown as primary results.",
-      "Pick a process, voltage, and amperage to calculate weld time and required cool-down time.",
+      "Pick a process, voltage, and manual-rated amperage to calculate weld time and required cool-down time.",
     ],
   });
 });
@@ -131,10 +128,6 @@ runTest("weld and rest time are calculated within a 10-minute window", () => {
     weldMinutes: 4,
     restMinutes: 6,
   });
-});
-
-runTest("out-of-range amperage does not produce an estimate", () => {
-  assert.equal(estimateDutyCycleResult("Stick", 120, 140), undefined);
 });
 
 runTest("agent normalization prefers the troubleshooting manual page for troubleshooting tools", () => {

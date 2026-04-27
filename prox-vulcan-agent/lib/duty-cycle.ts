@@ -8,7 +8,7 @@ export type DutyCycleRating = {
 };
 
 export type DutyCycleCalculationResult = {
-  source: "manual" | "estimated";
+  source: "manual";
   dutyCyclePercent: number;
   weldMinutes: number;
   restMinutes: number;
@@ -155,44 +155,6 @@ export function findExactDutyCycleResult(
   };
 }
 
-export function estimateDutyCycleResult(
-  process: WeldingProcess,
-  inputVoltage: InputVoltage,
-  amperage: number
-): DutyCycleCalculationResult | undefined {
-  const ratings = [...DUTY_CYCLE_RATINGS[process][inputVoltage]].sort(
-    (left, right) => left.amperage - right.amperage
-  );
-
-  if (ratings.length < 2) {
-    return undefined;
-  }
-
-  const lower = ratings[0];
-  const upper = ratings[ratings.length - 1];
-
-  if (amperage < lower.amperage || amperage > upper.amperage) {
-    return undefined;
-  }
-
-  if (amperage === lower.amperage || amperage === upper.amperage) {
-    return undefined;
-  }
-
-  const slope =
-    (upper.dutyCyclePercent - lower.dutyCyclePercent) /
-    (upper.amperage - lower.amperage);
-  const estimatedDutyCycle = roundToTenth(
-    lower.dutyCyclePercent + slope * (amperage - lower.amperage)
-  );
-
-  return {
-    source: "estimated",
-    dutyCyclePercent: estimatedDutyCycle,
-    ...calculateDutyCycleWindow(estimatedDutyCycle),
-  };
-}
-
 export function buildDutyCycleTool(
   message: string
 ): DutyCycleToolPayload | null {
@@ -217,21 +179,12 @@ export function buildDutyCycleTool(
 
     if (!result) {
       notes.push(
-        `The manual does not list an exact duty cycle rating at ${amperage}A for ${process} on ${inputVoltage}V.`
+        `The manual does not list a duty cycle rating at ${amperage}A for ${process} on ${inputVoltage}V. Choose one of the manual-rated amperages shown.`
       );
-
-      const estimate = estimateDutyCycleResult(process, inputVoltage, amperage);
-
-      if (estimate) {
-        result = estimate;
-        notes.push(
-          "Estimated values are interpolated between the two manual-listed ratings for this process and voltage."
-        );
-      }
     }
   } else {
     notes.push(
-      "Pick a process, voltage, and amperage to calculate weld time and required cool-down time."
+      "Pick a process, voltage, and manual-rated amperage to calculate weld time and required cool-down time."
     );
   }
 

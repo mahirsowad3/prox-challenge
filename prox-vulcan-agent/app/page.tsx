@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import PdfPageView from "@/components/PdfPageView";
 import {
   DUTY_CYCLE_RATINGS,
-  estimateDutyCycleResult,
   findExactDutyCycleResult,
   type DutyCycleToolPayload,
   type InputVoltage,
@@ -97,6 +96,20 @@ function AssistantMessageContent({ content }: { content: string }) {
   );
 }
 
+function getManualAmperageFromTool(
+  tool: DutyCycleToolPayload | null | undefined
+): number | "" {
+  if (!tool?.process || !tool.inputVoltage || tool.amperage === undefined) {
+    return "";
+  }
+
+  const isManualRating = DUTY_CYCLE_RATINGS[tool.process][tool.inputVoltage].some(
+    (rating) => rating.amperage === tool.amperage
+  );
+
+  return isManualRating ? tool.amperage : "";
+}
+
 function DutyCycleToolCard({
   tool,
 }: {
@@ -108,38 +121,53 @@ function DutyCycleToolCard({
   const [selectedVoltage, setSelectedVoltage] = useState<InputVoltage | "">(
     tool?.inputVoltage ?? ""
   );
-  const [amperageInput, setAmperageInput] = useState(
-    tool?.amperage !== undefined ? String(tool.amperage) : ""
+  const [selectedAmperage, setSelectedAmperage] = useState<number | "">(
+    getManualAmperageFromTool(tool)
   );
 
   if (!tool) {
     return null;
   }
 
-  const parsedAmperage = Number(amperageInput);
   const hasProcess = selectedProcess !== "";
   const hasVoltage = selectedVoltage !== "";
-  const hasAmperage = amperageInput.trim() !== "" && Number.isFinite(parsedAmperage);
+  const hasAmperage = selectedAmperage !== "";
   const ratedPoints =
     hasProcess && hasVoltage
       ? DUTY_CYCLE_RATINGS[selectedProcess][selectedVoltage]
       : [];
   const exactResult =
     hasProcess && hasVoltage && hasAmperage
-      ? findExactDutyCycleResult(selectedProcess, selectedVoltage, parsedAmperage)
+      ? findExactDutyCycleResult(selectedProcess, selectedVoltage, selectedAmperage)
       : undefined;
-  const estimatedResult =
-    hasProcess && hasVoltage && hasAmperage && !exactResult
-      ? estimateDutyCycleResult(selectedProcess, selectedVoltage, parsedAmperage)
-      : undefined;
-  const displayedResult = exactResult ?? estimatedResult ?? tool.result;
-  const displayedNotes =
-    hasProcess && hasVoltage && hasAmperage && !exactResult && estimatedResult
-      ? [
-          `The manual does not list an exact duty cycle rating at ${parsedAmperage}A for ${selectedProcess} on ${selectedVoltage}V.`,
-          "Estimated values are interpolated between the two manual-listed ratings for this process and voltage.",
-        ]
-      : tool.notes;
+  const displayedResult = exactResult;
+  const displayedNotes = tool.notes;
+  const keepValidAmperage = (
+    process: WeldingProcess | "",
+    voltage: InputVoltage | ""
+  ) => {
+    setSelectedAmperage((currentAmperage) => {
+      if (process === "" || voltage === "" || currentAmperage === "") {
+        return "";
+      }
+
+      const isStillAvailable = DUTY_CYCLE_RATINGS[process][voltage].some(
+        (rating) => rating.amperage === currentAmperage
+      );
+
+      return isStillAvailable ? currentAmperage : "";
+    });
+  };
+
+  const handleSelectProcess = (process: WeldingProcess) => {
+    setSelectedProcess(process);
+    keepValidAmperage(process, selectedVoltage);
+  };
+
+  const handleSelectVoltage = (voltage: InputVoltage) => {
+    setSelectedVoltage(voltage);
+    keepValidAmperage(selectedProcess, voltage);
+  };
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
@@ -161,7 +189,7 @@ function DutyCycleToolCard({
               <button
                 key={process}
                 type="button"
-                onClick={() => setSelectedProcess(process)}
+                onClick={() => handleSelectProcess(process)}
                 className={`rounded-full border px-3 py-1.5 text-sm transition ${
                   selectedProcess === process
                     ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
@@ -183,7 +211,7 @@ function DutyCycleToolCard({
               <button
                 key={voltage}
                 type="button"
-                onClick={() => setSelectedVoltage(voltage)}
+                onClick={() => handleSelectVoltage(voltage)}
                 className={`rounded-full border px-3 py-1.5 text-sm transition ${
                   selectedVoltage === voltage
                     ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
@@ -196,37 +224,22 @@ function DutyCycleToolCard({
           </div>
         </div>
 
-        <div>
-          <label
-            htmlFor="duty-cycle-amperage"
-            className="mb-2 block text-xs font-medium uppercase tracking-wide text-zinc-500"
-          >
-            Amperage
-          </label>
-          <input
-            id="duty-cycle-amperage"
-            type="number"
-            min="1"
-            step="1"
-            value={amperageInput}
-            onChange={(event) => setAmperageInput(event.target.value)}
-            placeholder="Enter amperage"
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm outline-none transition focus:border-zinc-500"
-          />
-        </div>
-
         {ratedPoints.length > 0 ? (
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Rated Points
+              Manual-Rated Amperage
             </p>
             <div className="flex flex-wrap gap-2">
               {ratedPoints.map((rating) => (
                 <button
                   key={`${rating.amperage}-${rating.dutyCyclePercent}`}
                   type="button"
-                  onClick={() => setAmperageInput(String(rating.amperage))}
-                  className="rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                  onClick={() => setSelectedAmperage(rating.amperage)}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                    selectedAmperage === rating.amperage
+                      ? "border-blue-500/80 bg-blue-500/10 text-blue-100"
+                      : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                  }`}
                 >
                   {rating.amperage}A at {rating.dutyCyclePercent}%
                 </button>
@@ -237,26 +250,15 @@ function DutyCycleToolCard({
 
         {displayedResult ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Result
-                </p>
-                <p className="text-sm text-zinc-300">
-                  {selectedProcess || tool.process || "Selected process"} on{" "}
-                  {selectedVoltage || tool.inputVoltage || "selected voltage"}V
-                  {hasAmperage ? ` at ${parsedAmperage}A` : ""}
-                </p>
-              </div>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-medium uppercase tracking-wide ${
-                  displayedResult.source === "manual"
-                    ? "bg-emerald-500/10 text-emerald-300"
-                    : "bg-amber-500/10 text-amber-300"
-                }`}
-              >
-                {displayedResult.source === "manual" ? "Manual" : "Estimated"}
-              </span>
+            <div className="mb-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Result
+              </p>
+              <p className="text-sm text-zinc-300">
+                {selectedProcess || tool.process || "Selected process"} on{" "}
+                {selectedVoltage || tool.inputVoltage || "selected voltage"}V
+                {hasAmperage ? ` at ${selectedAmperage}A` : ""}
+              </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
@@ -288,8 +290,8 @@ function DutyCycleToolCard({
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
-            Select a process and voltage, then enter an amperage to calculate
-            duty cycle guidance.
+            Select a process and voltage, then choose one of the manual-rated
+            amperages to calculate duty cycle guidance.
           </div>
         )}
 
@@ -318,13 +320,6 @@ function TroubleshootingFlowchartCard({
   );
   const [currentNodeId, setCurrentNodeId] = useState(tool?.startNodeId ?? "");
   const [history, setHistory] = useState<string[]>([]);
-
-  useEffect(() => {
-    setSelectedProcess(tool?.process ?? "");
-    setSelectedIssueId(tool?.issueId ?? "");
-    setCurrentNodeId(tool?.startNodeId ?? "");
-    setHistory([]);
-  }, [tool]);
 
   if (!tool) {
     return null;
@@ -388,7 +383,7 @@ function TroubleshootingFlowchartCard({
       <div className="mb-4">
         <h3 className="text-sm font-medium">{tool.title}</h3>
         <p className="mt-2 text-sm text-zinc-400">
-          Walk through the manual's troubleshooting checks one step at a time.
+          Walk through the manual&apos;s troubleshooting checks one step at a time.
         </p>
       </div>
 
