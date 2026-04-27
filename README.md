@@ -1,92 +1,102 @@
-# Prox Founding Engineer Challenge
+# Prox Vulcan Agent
 
-<img src="product.webp" alt="Vulcan OmniPro 220" width="400" /> <img src="product-inside.webp" alt="Vulcan OmniPro 220 — inside panel" width="400" />
+<img src="product.webp" alt="Vulcan OmniPro 220" width="400" /> <img src="product-inside.webp" alt="Vulcan OmniPro 220 inside panel" width="400" />
 
-## The Product
+## Product Context
 
-The [Vulcan OmniPro 220](https://www.harborfreight.com/omnipro-220-industrial-multiprocess-welder-with-120240v-input-57812.html) is a multiprocess welding system sold by Harbor Freight. It supports four welding processes (MIG, Flux-Cored, TIG, and Stick), runs on both 120V and 240V input, and has an LCD-based synergic control system.
+The [Vulcan OmniPro 220](https://www.harborfreight.com/omnipro-220-industrial-multiprocess-welder-with-120240v-input-57812.html) is a multiprocess welding system sold by Harbor Freight. It supports MIG, Flux-Cored, TIG, and Stick welding, runs on both 120V and 240V input, and includes an LCD-based synergic control system.
 
-Its owner's manual is 48 pages of dense technical content. Duty cycle matrices across multiple voltages and amperages, polarity setup procedures that differ per welding process, wire feed mechanisms with specific tensioner calibrations, wiring schematics, troubleshooting matrices, weld diagnosis diagrams, and a full parts list.
+The owner's manual is dense: duty-cycle tables, polarity setup procedures, wire-feed instructions, troubleshooting matrices, weld diagnosis material, diagrams, schematics, and parts references. This project turns those manuals into a grounded support agent that can answer technical questions and show the relevant visual/manual context alongside the answer.
 
-This is exactly the kind of product Prox exists for. Nobody knows how to use this machine straight out of the box but has time to read 48 page manual, but a complicated machine needs expert-level support.
+## Agent Overview
 
-Additional video: https://www.youtube.com/watch?v=kxGDoGcnhBw
+The implementation lives in [`prox-vulcan-agent`](prox-vulcan-agent), a Next.js app backed by the Anthropic Claude Agent SDK.
 
-## Your Job
+The UI is split into two working areas:
 
-Build a multimodal reasoning agent for the Vulcan OmniPro 220 using the Claude Agent SDK. The agent must be able to answer deep technical questions about this product accurately, helpfully, and not just in text.
+- **Chat:** ask setup, polarity, duty-cycle, settings, or troubleshooting questions in natural language.
+- **Visual Help / Artifacts:** see cited manual pages rendered from the source PDFs, navigate between citations, and interact with generated support tools.
 
-The manuals are in the `files/` directory.
+The assistant is not text-only. When a question benefits from visual support, the app shows the relevant manual page. For structured tasks, it can also surface deterministic interactive cards, currently including a duty-cycle calculator and guided troubleshooting flowchart.
 
-**There is no limit to how far you can go.** You can integrate voice. You can build a full interactive experience. Sky is the limit. The more ambitious and polished, the better.
+## How the Agent Works
 
-## What We're Testing
+1. The browser posts each user message to `prox-vulcan-agent/app/api/chat/route.ts`.
+2. The API route calls `runAgent` in `prox-vulcan-agent/lib/agent.ts`.
+3. `runAgent` first checks whether the message should create a deterministic tool payload, such as the duty-cycle calculator or troubleshooting flowchart.
+4. It retrieves the most relevant manual chunks with `retrieveManualContext`.
+5. It sends only those retrieved excerpts to Claude through the Claude Agent SDK.
+6. Claude is instructed to answer only from the supplied excerpts and return schema-shaped JSON containing:
+   - `answer`
+   - `citations`
+   - `visual`
+7. The response is normalized before returning to the UI. Citations are deduplicated, filtered to pages that were actually retrieved, and used to choose the best page preview for the visual panel.
 
-### 1. Deep Technical Accuracy
+## Knowledge Extraction and Representation
 
-Your agent needs to answer questions like these correctly:
+The source manuals live in `prox-vulcan-agent/files`:
 
-- "What's the duty cycle for MIG welding at 200A on 240V?"
-- "I'm getting porosity in my flux-cored welds. What should I check?"
-- "What polarity setup do I need for TIG welding? Which socket does the ground clamp go in?"
+- `owner-manual.pdf`
+- `quick-start-guide.pdf`
+- `selection-chart.pdf`
 
-We will test with questions that require cross-referencing multiple manual sections, understanding visual content (diagrams, schematics, charts), and handling ambiguous questions that need clarification from the user.
+The retrieval data is generated with:
 
-### 2. Multimodal Responses
+```bash
+npm run build:retrieval
+```
 
-This is the most important part. Your agent must not be text-only.
+That command runs `prox-vulcan-agent/scripts/extract-pdfs.ts`, which extracts PDF text page by page and writes JSON data into `prox-vulcan-agent/data`.
 
-- If someone asks about polarity setup, the agent should draw or show a diagram of which cable goes in which socket, not just describe it.
-- If the answer relates to a specific image in the manual (the wire feed mechanism, the front panel controls, the weld diagnosis examples), the agent should surface that image.
-- If a question is complex enough, the agent should generate interactive content: a duty cycle calculator, a troubleshooting flowchart, a settings configurator that takes process + material + thickness and outputs recommended wire speed and voltage.
+The knowledge pipeline is deliberately local and reproducible:
 
-When something is too cognitively hard to explain in words, the agent should draw it. Real-time diagrams, interactive schematics, visual walkthroughs generated through code.
+- PDF text is extracted per page so every answer can cite an exact source PDF and page number.
+- Text is normalized separately for display and retrieval.
+- Pages are split into overlapping chunks so the retriever can match specific procedures without losing nearby context.
+- Section titles are inferred from nearby headings when possible.
+- A prebuilt retrieval index stores chunk text, source metadata, token counts, IDF values, and lightweight semantic components.
+- Retrieval combines BM25-style lexical scoring, local semantic similarity, manual-domain query expansions, and reranking rules for welder-specific intents such as polarity, shielding gas, wire feed, duty cycle, and troubleshooting.
 
-For your agent to handle these responses well you need to reverse engineer Claude artifacts. Here are two places where you can start:
-- https://claude.ai/artifacts (see how Claude renders interactive artifacts in chat)
-- https://www.reidbarber.com/blog/reverse-engineering-claude-artifacts
+This keeps startup fast and avoids a separate embedding API dependency while still giving the agent useful recall over technical manual content.
 
-### 3. Tone and Helpfulness
+## Multimodal and Artifact Design
 
-Imagine your user just bought this welder and is standing in their garage trying to set it up. They're not an idiot, but they're not a professional welder either.
+The app represents multimodal help in three ways:
 
-### 4. Knowledge Extraction Quality
+- **Manual page previews:** cited PDF pages are rendered in the right-hand panel with `pdfjs-dist`, so users can inspect diagrams, tables, front-panel labels, and setup figures directly.
+- **Citation navigation:** every assistant answer can return multiple citations, and the UI lets users switch between cited pages.
+- **Interactive artifacts:** deterministic tool payloads render as React cards instead of prose-only explanations.
 
-The manual has a mix of text, tables, labeled diagrams, schematics, and decision matrices. Some critical information exists only in images (the welding process selection chart, the weld diagnosis photos, the wiring schematic). We want to see that your agent understands and presents the visual content, not just the text.
+Current artifact examples:
 
-## Tech Requirements
+- **Duty Cycle Calculator:** built from manual-rated points for MIG, TIG, and Stick at 120V and 240V. It calculates weld/rest time within a 10-minute duty-cycle window only for manual-listed ratings.
+- **Troubleshooting Flowchart:** built from the manual troubleshooting tables. It guides the user through process-specific checks for MIG, TIG, and Stick symptoms while preserving manual source pages.
 
-- Use the [Anthropic Claude Agent SDK](https://docs.anthropic.com) as the foundation for your agent.
-- The project must run locally with a single API key provided via `.env`.
-- You are responsible for your own API costs during development.
+## Design Decisions
 
-## How to Present Your Work
+- **Grounded retrieval over unconstrained generation:** the model only sees selected manual excerpts, which reduces hallucination risk for setup and safety-sensitive questions.
+- **Deterministic tools for structured tasks:** duty-cycle math and troubleshooting flows are encoded in TypeScript so the UI can provide reliable interactions instead of asking the model to improvise calculations or decision trees.
+- **Schema-constrained model output:** Claude returns predictable JSON, making the frontend simpler and preventing brittle parsing of free-form text.
+- **Citation filtering:** returned citations must match retrieved pages, so the assistant cannot cite unsupported pages.
+- **Local prebuilt index:** retrieval works from committed JSON data and does not require a vector database or embedding service.
+- **Visual-first support when useful:** manual pages, charts, and diagrams are shown beside the answer because many welding setup questions are easier to verify visually than through text alone.
 
-**This matters.** Your submission is not just the code — it's how you present it.
+## How to Run
 
-- **Build a frontend.** The best way for us to evaluate your agent is if it has a clean, simple UI we can run immediately. This is realistically the only way to properly demo an agent like this.
-- **Hosting is a plus.** If you host it somewhere we can access without cloning, that's a strong signal. Not required, but it removes friction and shows initiative.
-- **Write a clear README.** Explain how your agent works, what design decisions you made, how knowledge is extracted and represented, and how to run it. Your documentation will be evaluated — we want to see how you think and communicate, not just how you code.
-- **Video walkthrough is a huge plus.** Record yourself demoing the agent and explaining your approach. Walk through the hard questions, show how it handles multimodal responses, explain your architecture. This gives us a much richer picture of your work than code alone.
-
-We should be running your agent within 2 minutes of cloning your repo:
+From a fresh clone:
 
 ```bash
 git clone <your-fork>
-cd <your-fork>
-cp .env.example .env   # we plug in our own Anthropic API key
-# your install command (npm install, uv install, etc.)
-# your run command (npm run dev, python app.py, etc.)
+cd <your-fork>/prox-vulcan-agent
+cp ../.env.example .env.local
+npm install
+npm run dev
 ```
 
-If it takes longer than that to set up, that's a problem.
+Set your Anthropic API key in `prox-vulcan-agent/.env.local`:
 
-## What to Submit
+```bash
+ANTHROPIC_API_KEY=your-api-key-here
+```
 
-1. Fork this repo.
-2. Build your solution.
-3. Submit your fork URL through the form at [useprox.com/join/challenge](https://useprox.com/join/challenge).
-
-## What Happens Next
-
-We review submissions on a rolling basis and respond to every single one within a few days. Good luck.
+Then open [http://localhost:3000](http://localhost:3000).
